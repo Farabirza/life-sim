@@ -141,12 +141,12 @@ export class WorldScene extends Phaser.Scene {
         this.player.setDepth(10)
         
         
-        this.player.body.setSize(
+        this.player.body?.setSize(
             18,
             12
         )
 
-        this.player.body.setOffset(
+        this.player.body?.setOffset(
             7,
             18
         )
