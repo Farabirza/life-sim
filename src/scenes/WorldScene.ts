@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 
 export class WorldScene extends Phaser.Scene {
 
-    private player!: Phaser.Physics.Arcade.Image
+    private player!: Phaser.Physics.Arcade.Sprite
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
 
@@ -42,6 +42,15 @@ export class WorldScene extends Phaser.Scene {
         this.load.image(
             'nature_objects1',
             '/assets/tilesets/nature_objects1.png'
+        )
+
+        this.load.spritesheet(
+            'player',
+            '/assets/characters/male1.png',
+            {
+                frameWidth: 32,
+                frameHeight: 32
+            }
         )
 
         this.load.tilemapTiledJSON(
@@ -123,17 +132,28 @@ export class WorldScene extends Phaser.Scene {
         const spawnY =
             spawn?.y ?? 300
 
-        this.createPlayerTexture()
-
-        this.player = this.physics.add.image(
+        this.player = this.physics.add.sprite(
             spawnX,
             spawnY,
-            'player'
+            'player',
+            1
         )
         this.player.setDepth(10)
+        
+        
+        this.player.body.setSize(
+            18,
+            12
+        )
+
+        this.player.body.setOffset(
+            7,
+            18
+        )
+        
+        this.createPlayerAnimations()
 
         this.player.setCollideWorldBounds(true)
-
         this.physics.world.setBounds(
             0,
             0,
@@ -193,6 +213,8 @@ export class WorldScene extends Phaser.Scene {
         }
     }
 
+    private facing: 'down' | 'left' | 'right' | 'up' = 'down'
+
     update() {
 
         const speed = 180
@@ -215,20 +237,60 @@ export class WorldScene extends Phaser.Scene {
             this.cursors.down.isDown ||
             this.wasd.S.isDown
 
-        if (left) {
-            this.player.setVelocityX(-speed)
-        }
+        let moving = false
 
-        if (right) {
+        if (left) {
+
+            this.player.setVelocityX(-speed)
+
+            this.player.anims.play(
+                'walk-left',
+                true
+            )
+
+            this.facing = 'left'
+
+            moving = true
+
+        } else if (right) {
+
             this.player.setVelocityX(speed)
+
+            this.player.anims.play(
+                'walk-right',
+                true
+            )
+
+            this.facing = 'right'
+
+            moving = true
         }
 
         if (up) {
-            this.player.setVelocityY(-speed)
-        }
 
-        if (down) {
+            this.player.setVelocityY(-speed)
+
+            this.player.anims.play(
+                'walk-up',
+                true
+            )
+
+            this.facing = 'up'
+
+            moving = true
+
+        } else if (down) {
+
             this.player.setVelocityY(speed)
+
+            this.player.anims.play(
+                'walk-down',
+                true
+            )
+
+            this.facing = 'down'
+
+            moving = true
         }
 
         if (
@@ -239,30 +301,80 @@ export class WorldScene extends Phaser.Scene {
                 .normalize()
                 .scale(speed)
         }
+
+        if (!moving) {
+
+            this.player.anims.stop()
+
+            switch (this.facing) {
+
+                case 'down':
+                    this.player.setFrame(1)
+                    break
+
+                case 'left':
+                    this.player.setFrame(4)
+                    break
+
+                case 'right':
+                    this.player.setFrame(7)
+                    break
+
+                case 'up':
+                    this.player.setFrame(10)
+                    break
+            }
+        }
     }
-
-    private createPlayerTexture() {
-
-        const graphics = this.make.graphics({
-            x: 0,
-            y: 0
+    
+    private createPlayerAnimations() {
+        this.anims.create({
+            key: 'walk-down',
+            frames: [
+                { key: 'player', frame: 0 },
+                { key: 'player', frame: 1 },
+                { key: 'player', frame: 2 },
+                { key: 'player', frame: 1 }
+            ],
+            frameRate: 8,
+            repeat: -1
         })
 
-        graphics.fillStyle(0xff3333)
+        this.anims.create({
+            key: 'walk-left',
+            frames: [
+                { key: 'player', frame: 3 },
+                { key: 'player', frame: 4 },
+                { key: 'player', frame: 5 },
+                { key: 'player', frame: 4 }
+            ],
+            frameRate: 8,
+            repeat: -1
+        })
 
-        graphics.fillRect(
-            0,
-            0,
-            24,
-            28
-        )
+        this.anims.create({
+            key: 'walk-right',
+            frames: [
+                { key: 'player', frame: 6 },
+                { key: 'player', frame: 7 },
+                { key: 'player', frame: 8 },
+                { key: 'player', frame: 7 }
+            ],
+            frameRate: 8,
+            repeat: -1
+        })
 
-        graphics.generateTexture(
-            'player',
-            24,
-            28
-        )
-
-        graphics.destroy()
+        this.anims.create({
+            key: 'walk-up',
+            frames: [
+                { key: 'player', frame: 9 },
+                { key: 'player', frame: 10 },
+                { key: 'player', frame: 11 },
+                { key: 'player', frame: 10 }
+            ],
+            frameRate: 8,
+            repeat: -1
+        })
     }
+
 }
