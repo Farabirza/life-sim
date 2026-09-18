@@ -5,6 +5,7 @@ export class WorldScene extends Phaser.Scene {
     private player!: Phaser.Physics.Arcade.Image
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
+
     private wasd!: {
         W: Phaser.Input.Keyboard.Key
         A: Phaser.Input.Keyboard.Key
@@ -12,50 +13,136 @@ export class WorldScene extends Phaser.Scene {
         D: Phaser.Input.Keyboard.Key
     }
 
-    private obstacles!: Phaser.Physics.Arcade.StaticGroup
-
-    private readonly TILE_SIZE = 32
-    private readonly MAP_WIDTH = 50
-    private readonly MAP_HEIGHT = 50
-
     constructor() {
         super('WorldScene')
     }
 
-    create() {
-        this.createTextures()
+    preload() {
 
-        const worldWidth = this.MAP_WIDTH * this.TILE_SIZE
-        const worldHeight = this.MAP_HEIGHT * this.TILE_SIZE
+        this.load.on('loaderror', (file: Phaser.Loader.File) => {
+            console.error(
+                'FAILED TO LOAD:',
+                file.key,
+                file.src
+            )
+        })
 
-        // World boundaries
-        this.physics.world.setBounds(
-            0,
-            0,
-            worldWidth,
-            worldHeight
+        this.load.on('filecomplete', (key: string) => {
+            console.log(
+                'LOADED:',
+                key
+            )
+        })
+
+        this.load.image(
+            'terrain',
+            '/assets/tilesets/terrain.png'
         )
 
-        // Terrain
-        this.createWorld()
+        this.load.image(
+            'nature_objects1',
+            '/assets/tilesets/nature_objects1.png'
+        )
 
-        // Player
+        this.load.tilemapTiledJSON(
+            'farm',
+            '/assets/maps/farm.json'
+        )
+    }
+
+    create() {
+
+        console.log('WorldScene create() started')
+
+        const map = this.make.tilemap({
+            key: 'farm'
+        })
+
+        console.log('MAP:', map)
+        console.log('MAP SIZE:', map.width, map.height)
+        console.log('TILE SIZE:', map.tileWidth, map.tileHeight)
+        console.log('TILESETS:', map.tilesets)
+
+        const terrainTileset  = map.addTilesetImage(
+            'terrain',
+            'terrain'
+        )
+        
+        const natureTileset = map.addTilesetImage(
+            'nature_objects1',
+            'nature_objects1'
+        )
+
+        if (!terrainTileset || !natureTileset) {
+            throw new Error('One or more tilesets could not be loaded')
+        }
+
+        const tilesets = [
+            terrainTileset,
+            natureTileset
+        ]
+
+        // Ground
+        const groundLayer = map.createLayer(
+            'Ground',
+            tilesets ,
+            0,
+            0
+        )
+        groundLayer?.setDepth(0)
+
+        // GroundDecoration
+        const decorationLayer = map.createLayer(
+            'GroundDecoration',
+            tilesets ,
+            0,
+            0
+        )
+        decorationLayer?.setDepth(1)
+
+        // Objects
+        const objectLayer = map.createLayer(
+            'Objects',
+            tilesets ,
+            0,
+            0
+        )
+        objectLayer?.setDepth(5)
+
+        const eventsLayer =
+            map.getObjectLayer('Events')
+
+        const spawn =
+            eventsLayer?.objects.find(
+                object => object.name === 'PlayerSpawn'
+            )
+
+        const spawnX =
+            spawn?.x ?? 400
+
+        const spawnY =
+            spawn?.y ?? 300
+
+        this.createPlayerTexture()
+
         this.player = this.physics.add.image(
-            5 * this.TILE_SIZE + this.TILE_SIZE / 2,
-            5 * this.TILE_SIZE + this.TILE_SIZE / 2,
+            spawnX,
+            spawnY,
             'player'
         )
+        this.player.setDepth(10)
 
         this.player.setCollideWorldBounds(true)
 
-        // Player vs obstacles
-        this.physics.add.collider(
-            this.player,
-            this.obstacles
+        this.physics.world.setBounds(
+            0,
+            0,
+            map.widthInPixels,
+            map.heightInPixels
         )
 
-        // Keyboard
-        this.cursors = this.input.keyboard!.createCursorKeys()
+        this.cursors =
+            this.input.keyboard!.createCursorKeys()
 
         this.wasd = this.input.keyboard!.addKeys({
             W: Phaser.Input.Keyboard.KeyCodes.W,
@@ -64,12 +151,11 @@ export class WorldScene extends Phaser.Scene {
             D: Phaser.Input.Keyboard.KeyCodes.D
         }) as typeof this.wasd
 
-        // Camera
         this.cameras.main.setBounds(
             0,
             0,
-            worldWidth,
-            worldHeight
+            map.widthInPixels,
+            map.heightInPixels
         )
 
         this.cameras.main.startFollow(
@@ -78,9 +164,37 @@ export class WorldScene extends Phaser.Scene {
             0.1,
             0.1
         )
+
+        const aboveLayer = map.createLayer(
+            'AbovePlayer',
+            tilesets,
+            0,
+            0
+        )
+        aboveLayer?.setDepth(20)
+        
+        // Collision
+        const collisionLayer = map.createLayer(
+            'Collision',
+            tilesets,
+            0,
+            0
+        )
+
+        collisionLayer?.setCollisionByExclusion([-1])
+        if (collisionLayer) {
+
+            this.physics.add.collider(
+                this.player,
+                collisionLayer
+            )
+
+            collisionLayer.setVisible(false)
+        }
     }
 
     update() {
+
         const speed = 180
 
         this.player.setVelocity(0)
@@ -127,205 +241,28 @@ export class WorldScene extends Phaser.Scene {
         }
     }
 
-    private createTextures() {
+    private createPlayerTexture() {
 
-        // Player
-        const playerGraphics = this.make.graphics({ x: 0, y: 0 })
+        const graphics = this.make.graphics({
+            x: 0,
+            y: 0
+        })
 
-        playerGraphics.fillStyle(0xff3333)
-        playerGraphics.fillRect(0, 0, 24, 28)
+        graphics.fillStyle(0xff3333)
 
-        playerGraphics.generateTexture(
+        graphics.fillRect(
+            0,
+            0,
+            24,
+            28
+        )
+
+        graphics.generateTexture(
             'player',
             24,
             28
         )
 
-        playerGraphics.destroy()
-
-        // Grass
-        const grassGraphics = this.make.graphics({ x: 0, y: 0 })
-
-        grassGraphics.fillStyle(0x63a84d)
-        grassGraphics.fillRect(
-            0,
-            0,
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        grassGraphics.generateTexture(
-            'grass',
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        grassGraphics.destroy()
-
-        // Dirt
-        const dirtGraphics = this.make.graphics({ x: 0, y: 0 })
-
-        dirtGraphics.fillStyle(0xa67c52)
-        dirtGraphics.fillRect(
-            0,
-            0,
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        dirtGraphics.generateTexture(
-            'dirt',
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        dirtGraphics.destroy()
-
-        // Water
-        const waterGraphics = this.make.graphics({ x: 0, y: 0 })
-
-        waterGraphics.fillStyle(0x3498db)
-        waterGraphics.fillRect(
-            0,
-            0,
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        waterGraphics.generateTexture(
-            'water',
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        waterGraphics.destroy()
-
-        // Tree
-        const treeGraphics = this.make.graphics({ x: 0, y: 0 })
-
-        treeGraphics.fillStyle(0x1e6b34)
-        treeGraphics.fillRect(
-            0,
-            0,
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        treeGraphics.generateTexture(
-            'tree',
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        treeGraphics.destroy()
-
-        // Rock
-        const rockGraphics = this.make.graphics({ x: 0, y: 0 })
-
-        rockGraphics.fillStyle(0x777777)
-        rockGraphics.fillRect(
-            0,
-            0,
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        rockGraphics.generateTexture(
-            'rock',
-            this.TILE_SIZE,
-            this.TILE_SIZE
-        )
-
-        rockGraphics.destroy()
-    }
-
-    private createWorld() {
-
-        this.obstacles = this.physics.add.staticGroup()
-
-        for (let y = 0; y < this.MAP_HEIGHT; y++) {
-
-            for (let x = 0; x < this.MAP_WIDTH; x++) {
-
-                const pixelX =
-                    x * this.TILE_SIZE +
-                    this.TILE_SIZE / 2
-
-                const pixelY =
-                    y * this.TILE_SIZE +
-                    this.TILE_SIZE / 2
-
-                // Default terrain
-                let terrain = 'grass'
-
-                // Lake
-                if (
-                    x >= 10 &&
-                    x <= 18 &&
-                    y >= 8 &&
-                    y <= 15
-                ) {
-                    terrain = 'water'
-                }
-
-                // Dirt/farm area
-                if (
-                    x >= 25 &&
-                    x <= 35 &&
-                    y >= 20 &&
-                    y <= 28
-                ) {
-                    terrain = 'dirt'
-                }
-
-                this.add.image(
-                    pixelX,
-                    pixelY,
-                    terrain
-                )
-
-                // Water collision
-                if (terrain === 'water') {
-                    this.obstacles
-                        .create(pixelX, pixelY, 'water')
-                        .setVisible(false)
-                }
-            }
-        }
-
-        // Trees
-        this.createObstacle(7, 10, 'tree')
-        this.createObstacle(8, 10, 'tree')
-        this.createObstacle(7, 11, 'tree')
-
-        this.createObstacle(22, 7, 'tree')
-        this.createObstacle(23, 7, 'tree')
-        this.createObstacle(24, 7, 'tree')
-
-        // Rocks
-        this.createObstacle(20, 20, 'rock')
-        this.createObstacle(21, 20, 'rock')
-        this.createObstacle(22, 20, 'rock')
-    }
-
-    private createObstacle(
-        tileX: number,
-        tileY: number,
-        texture: string
-    ) {
-
-        const x =
-            tileX * this.TILE_SIZE +
-            this.TILE_SIZE / 2
-
-        const y =
-            tileY * this.TILE_SIZE +
-            this.TILE_SIZE / 2
-
-        this.obstacles.create(
-            x,
-            y,
-            texture
-        )
+        graphics.destroy()
     }
 }
