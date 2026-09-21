@@ -13,6 +13,11 @@ export class WorldScene extends Phaser.Scene {
         D: Phaser.Input.Keyboard.Key
     }
 
+    private interactables!: Phaser.Physics.Arcade.StaticGroup
+    private interactionKey!: Phaser.Input.Keyboard.Key
+    private interactionText!: Phaser.GameObjects.Text
+    private interactionTimer?: Phaser.Time.TimerEvent
+
     constructor() {
         super('WorldScene')
     }
@@ -132,6 +137,7 @@ export class WorldScene extends Phaser.Scene {
         const spawnY =
             spawn?.y ?? 300
 
+        // Player
         this.player = this.physics.add.sprite(
             spawnX,
             spawnY,
@@ -139,19 +145,14 @@ export class WorldScene extends Phaser.Scene {
             1
         )
         this.player.setDepth(10)
-        
-        
         this.player.body?.setSize(
             18,
             12
         )
-
         this.player.body?.setOffset(
             7,
             18
         )
-        
-        this.createPlayerAnimations()
 
         this.player.setCollideWorldBounds(true)
         this.physics.world.setBounds(
@@ -160,7 +161,13 @@ export class WorldScene extends Phaser.Scene {
             map.widthInPixels,
             map.heightInPixels
         )
+        
+        this.createPlayerAnimations()
+        this.createInteractionTextures()
+        this.createInteractables()
+        this.createInteractionUI()
 
+        // Keyboard
         this.cursors =
             this.input.keyboard!.createCursorKeys()
 
@@ -170,6 +177,11 @@ export class WorldScene extends Phaser.Scene {
             S: Phaser.Input.Keyboard.KeyCodes.S,
             D: Phaser.Input.Keyboard.KeyCodes.D
         }) as typeof this.wasd
+
+        this.interactionKey =
+            this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.E
+            )
 
         this.cameras.main.setBounds(
             0,
@@ -325,6 +337,10 @@ export class WorldScene extends Phaser.Scene {
                     break
             }
         }
+
+        if (Phaser.Input.Keyboard.JustDown(this.interactionKey)) {
+            this.interact()
+        }
     }
     
     private createPlayerAnimations() {
@@ -375,6 +391,244 @@ export class WorldScene extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         })
+    }
+
+    private createInteractionTextures() {
+
+        // Wooden sign
+        const sign = this.make.graphics({
+            x: 0,
+            y: 0
+        })
+
+        sign.fillStyle(0x8b5a2b)
+        sign.fillRect(4, 4, 24, 14)
+        sign.fillStyle(0x5c4033)
+        sign.fillRect(14, 18, 4, 14)
+        sign.generateTexture(
+            'sign',
+            32,
+            32
+        )
+        sign.destroy()
+
+        // Treasure chest
+        const chest = this.make.graphics({
+            x: 0,
+            y: 0
+        })
+
+        chest.fillStyle(0x8b4513)
+        chest.fillRect(2, 10, 28, 20)
+        chest.fillStyle(0xd4af37)
+        chest.fillRect(2, 10, 28, 4)
+        chest.fillRect(14, 14, 4, 10)
+        chest.generateTexture(
+            'chest',
+            32,
+            32
+        )
+        chest.destroy()
+    }
+
+    private createInteractables() {
+        this.interactables =
+            this.physics.add.staticGroup()
+
+        // Wooden sign
+        const sign = this.interactables.create(
+            480,
+            256,
+            'sign'
+        ) as Phaser.Physics.Arcade.Sprite
+
+        sign.setData(
+            'type',
+            'sign'
+        )
+
+        sign.setData(
+            'message',
+            'Welcome to your new farm!'
+        )
+
+
+        // Treasure chest
+        const chest = this.interactables.create(
+            576,
+            256,
+            'chest'
+        ) as Phaser.Physics.Arcade.Sprite
+
+        chest.setData(
+            'type',
+            'chest'
+        )
+
+        chest.setData(
+            'message',
+            'You found 100 gold!'
+        )
+
+
+        // Prevent walking through objects
+        this.physics.add.collider(
+            this.player,
+            this.interactables
+        )
+    }
+
+    private getInteractionPoint() {
+        const distance = 28
+        const x = this.player.x
+        const y = this.player.y
+
+        switch (this.facing) {
+            case 'up':
+                return {
+                    x,
+                    y: y - distance
+                }
+            case 'down':
+                return {
+                    x,
+                    y: y + distance
+                }
+            case 'left':
+                return {
+                    x: x - distance,
+                    y
+                }
+            case 'right':
+                return {
+                    x: x + distance,
+                    y
+                }
+        }
+    }
+
+    private interact() {
+
+        const point =
+            this.getInteractionPoint()
+
+        const interactionRadius = 22
+
+        const objects =
+            this.interactables.getChildren()
+
+        let nearest:
+            Phaser.GameObjects.GameObject | null = null
+
+        let nearestDistance = Infinity
+
+        for (const object of objects) {
+
+            const sprite =
+                object as Phaser.Physics.Arcade.Sprite
+
+            const distance =
+                Phaser.Math.Distance.Between(
+                    point.x,
+                    point.y,
+                    sprite.x,
+                    sprite.y
+                )
+
+            if (
+                distance <= interactionRadius &&
+                distance < nearestDistance
+            ) {
+
+                nearest = sprite
+
+                nearestDistance = distance
+            }
+        }
+
+        if (!nearest) {
+            return
+        }
+
+        this.handleInteraction(
+            nearest as Phaser.Physics.Arcade.Sprite
+        )
+    }
+    
+    private handleInteraction(object: Phaser.Physics.Arcade.Sprite) {
+        const type =
+            object.getData('type')
+
+        const message =
+            object.getData('message')
+
+        switch (type) {
+            case 'sign':
+                this.showMessage(
+                    message
+                )
+                break
+            case 'chest':
+                this.showMessage(
+                    message
+                )
+                break
+        }
+    }
+
+    private createInteractionUI() {
+        const { width, height } =
+            this.scale
+
+        this.interactionText =
+            this.add.text(
+                width / 2,
+                height - 70,
+                '',
+                {
+                    fontFamily: 'Arial',
+                    fontSize: '20px',
+                    color: '#ffffff',
+                    backgroundColor: '#222222',
+                    padding: {
+                        x: 20,
+                        y: 12
+                    },
+                    wordWrap: {
+                        width: width - 100
+                    }
+                }
+            )
+
+        this.interactionText
+            .setOrigin(0.5)
+
+        this.interactionText
+            .setScrollFactor(0)
+
+        this.interactionText
+            .setDepth(1000)
+
+        this.interactionText
+            .setVisible(false)
+    }
+
+    private showMessage(message: string) {
+        if (this.interactionTimer) {
+            this.interactionTimer.remove()
+        }
+        this.interactionText
+            .setText(message)
+        this.interactionText
+            .setVisible(true)
+        this.interactionTimer =
+            this.time.delayedCall(
+                3000,
+                () => {
+                    this.interactionText
+                        .setVisible(false)
+                }
+            )
     }
 
 }
