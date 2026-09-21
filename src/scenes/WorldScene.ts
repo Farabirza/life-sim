@@ -105,11 +105,11 @@ export class WorldScene extends Phaser.Scene {
         })
         this.map = map
 
-        const terrainTileset  = map.addTilesetImage(
+        const terrainTileset = map.addTilesetImage(
             'terrain',
             'terrain'
         )
-        
+
         const natureTileset = map.addTilesetImage(
             'nature_objects1',
             'nature_objects1'
@@ -127,7 +127,7 @@ export class WorldScene extends Phaser.Scene {
         // Ground
         const groundLayer = map.createLayer(
             'Ground',
-            tilesets ,
+            tilesets,
             0,
             0
         )
@@ -136,7 +136,7 @@ export class WorldScene extends Phaser.Scene {
         // GroundDecoration
         const decorationLayer = map.createLayer(
             'GroundDecoration',
-            tilesets ,
+            tilesets,
             0,
             0
         )
@@ -145,7 +145,7 @@ export class WorldScene extends Phaser.Scene {
         // Objects
         const objectLayer = map.createLayer(
             'Objects',
-            tilesets ,
+            tilesets,
             0,
             0
         )
@@ -189,7 +189,7 @@ export class WorldScene extends Phaser.Scene {
             map.widthInPixels,
             map.heightInPixels
         )
-        
+
         this.createPlayerAnimations()
         this.createInteractionTextures()
         this.createInteractables(map)
@@ -232,7 +232,7 @@ export class WorldScene extends Phaser.Scene {
             0
         )
         aboveLayer?.setDepth(20)
-        
+
         // Collision
         this.collisionLayer =
             map.createLayer(
@@ -255,8 +255,8 @@ export class WorldScene extends Phaser.Scene {
 
         // inventory
         this.inventoryKey = this.input.keyboard!.addKey(
-                Phaser.Input.Keyboard.KeyCodes.I
-            )
+            Phaser.Input.Keyboard.KeyCodes.I
+        )
         this.createInventoryUI()
 
         // using tools
@@ -473,7 +473,7 @@ export class WorldScene extends Phaser.Scene {
             this.advanceDay()
         }
     }
-    
+
     private createPlayerAnimations() {
         this.anims.create({
             key: 'walk-down',
@@ -712,7 +712,7 @@ export class WorldScene extends Phaser.Scene {
             nearest as Phaser.Physics.Arcade.Sprite
         )
     }
-    
+
     private handleInteraction(object: Phaser.Physics.Arcade.Sprite) {
         const type = object.getData('type')
         const message = object.getData('message')
@@ -742,7 +742,7 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Validate item data
-        if (!itemId ||!Number.isInteger(quantity) ||quantity <= 0) {
+        if (!itemId || !Number.isInteger(quantity) || quantity <= 0) {
             this.showMessage(
                 'This chest is empty.'
             )
