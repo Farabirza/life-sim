@@ -1,5 +1,10 @@
 import Phaser from 'phaser'
 import { InventorySystem } from '../systems/InventorySystem'
+import {
+    FarmingSystem,
+    CROPS,
+    type FarmTile
+} from '../systems/FarmingSystem'
 
 export class WorldScene extends Phaser.Scene {
 
@@ -26,6 +31,27 @@ export class WorldScene extends Phaser.Scene {
     private inventoryKey!: Phaser.Input.Keyboard.Key
     private inventoryText!: Phaser.GameObjects.Text
     private inventoryVisible = false
+
+    // Farming system
+    private farming = new FarmingSystem()
+    private selectedTool:
+        'hoe' |
+        'seed' |
+        'water' |
+        'hand' = 'hoe'
+    private toolKeys!: {
+        hoe: Phaser.Input.Keyboard.Key
+        seed: Phaser.Input.Keyboard.Key
+        water: Phaser.Input.Keyboard.Key
+        hand: Phaser.Input.Keyboard.Key
+    }
+    private actionKey!: Phaser.Input.Keyboard.Key
+    private nextDayKey!: Phaser.Input.Keyboard.Key
+    private farmingGraphics!: Phaser.GameObjects.Graphics
+    private day = 1
+
+    private map!: Phaser.Tilemaps.Tilemap
+    private collisionLayer?: Phaser.Tilemaps.TilemapLayer
 
     constructor() {
         super('WorldScene')
@@ -77,6 +103,7 @@ export class WorldScene extends Phaser.Scene {
         const map = this.make.tilemap({
             key: 'farm'
         })
+        this.map = map
 
         const terrainTileset  = map.addTilesetImage(
             'terrain',
@@ -207,28 +234,58 @@ export class WorldScene extends Phaser.Scene {
         aboveLayer?.setDepth(20)
         
         // Collision
-        const collisionLayer = map.createLayer(
-            'Collision',
-            tilesets,
-            0,
-            0
-        )
+        this.collisionLayer =
+            map.createLayer(
+                'Collision',
+                tilesets,
+                0,
+                0
+            ) ?? undefined
 
-        collisionLayer?.setCollisionByExclusion([-1])
-        if (collisionLayer) {
-
+        if (this.collisionLayer) {
+            this.collisionLayer
+                .setCollisionByExclusion([-1])
             this.physics.add.collider(
                 this.player,
-                collisionLayer
+                this.collisionLayer
             )
-
-            collisionLayer.setVisible(false)
+            this.collisionLayer
+                .setVisible(false)
         }
 
+        // inventory
         this.inventoryKey = this.input.keyboard!.addKey(
                 Phaser.Input.Keyboard.KeyCodes.I
             )
         this.createInventoryUI()
+
+        // using tools
+        this.toolKeys = {
+            hoe: this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.ONE
+            ),
+            seed: this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.TWO
+            ),
+            water: this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.THREE
+            ),
+            hand: this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.FOUR
+            )
+        }
+
+        this.actionKey =
+            this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.SPACE
+            )
+        this.nextDayKey =
+            this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.N
+            )
+
+        this.farmingGraphics = this.add.graphics()
+        this.farmingGraphics.setDepth(2)
     }
 
     private facing: 'down' | 'left' | 'right' | 'up' = 'down'
@@ -348,10 +405,72 @@ export class WorldScene extends Phaser.Scene {
         if (Phaser.Input.Keyboard.JustDown(this.interactionKey)) {
             this.interact()
         }
-
         // toggle inventory
         if (Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
             this.toggleInventory()
+        }
+        // Select hoe
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.toolKeys.hoe
+            )
+        ) {
+            this.selectedTool = 'hoe'
+            this.showMessage(
+                'Equipped: Hoe'
+            )
+        }
+        // Select seeds
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.toolKeys.seed
+            )
+        ) {
+            this.selectedTool = 'seed'
+            this.showMessage(
+                'Equipped: Parsnip Seeds'
+            )
+        }
+        // Select watering can
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.toolKeys.water
+            )
+        ) {
+            this.selectedTool = 'water'
+            this.showMessage(
+                'Equipped: Watering Can'
+            )
+        }
+        // Select hand
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.toolKeys.hand
+            )
+        ) {
+
+            this.selectedTool = 'hand'
+
+            this.showMessage(
+                'Equipped: Hand'
+            )
+        }
+        // Use selected tool
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.actionKey
+            )
+        ) {
+
+            this.useTool()
+        }
+        // Advance day
+        if (
+            Phaser.Input.Keyboard.JustDown(
+                this.nextDayKey
+            )
+        ) {
+            this.advanceDay()
         }
     }
     
@@ -600,9 +719,7 @@ export class WorldScene extends Phaser.Scene {
 
         switch (type) {
             case 'sign':
-                this.showMessage(
-                    message ?? 'An old wooden sign.'
-                )
+                this.showMessage(message ?? 'An old wooden sign.')
                 break
             case 'chest':
                 this.openChest(object)
@@ -625,13 +742,10 @@ export class WorldScene extends Phaser.Scene {
         }
 
         // Validate item data
-        if (!itemId ||!Number.isInteger(quantity) ||quantity <= 0
-        ) {
-
+        if (!itemId ||!Number.isInteger(quantity) ||quantity <= 0) {
             this.showMessage(
                 'This chest is empty.'
             )
-
             return
         }
 
@@ -765,5 +879,246 @@ export class WorldScene extends Phaser.Scene {
 
         this.inventoryText.setText(content)
         this.inventoryText.setVisible(true)
+    }
+
+    private getFacingTile() {
+        const tileSize = 32
+
+        // Approximate player's feet position
+        const feetX = this.player.x
+        const feetY = this.player.y + 10
+        let tileX = Math.floor(feetX / tileSize)
+        let tileY = Math.floor(feetY / tileSize)
+
+        switch (this.facing) {
+            case 'up':
+                tileY--
+                break
+            case 'down':
+                tileY++
+                break
+            case 'left':
+                tileX--
+                break
+            case 'right':
+                tileX++
+                break
+        }
+
+        return {
+            x: tileX,
+            y: tileY
+        }
+    }
+
+    private useTool() {
+        const target = this.getFacingTile()
+        const x = target.x
+        const y = target.y
+
+        switch (this.selectedTool) {
+            case 'hoe':
+                if (!this.canFarm(x, y)) {
+                    this.showMessage(
+                        'You cannot farm here.'
+                    )
+                    break
+                }
+                if (
+                    this.farming.till(x, y)
+                ) {
+                    this.showMessage(
+                        'You tilled the soil!'
+                    )
+                } else {
+                    this.showMessage(
+                        'This soil is already tilled.'
+                    )
+                }
+                break
+            case 'seed':
+                this.plantSeed(x, y)
+                break
+            case 'water':
+                if (
+                    this.farming.water(x, y)
+                ) {
+                    this.showMessage(
+                        'You watered the soil!'
+                    )
+                } else {
+                    this.showMessage(
+                        'There is no farmland here.'
+                    )
+                }
+                break
+            case 'hand':
+                this.harvestCrop(x, y)
+                break
+        }
+
+        this.renderFarm()
+    }
+
+    private plantSeed(x: number, y: number) {
+        const cropId = 'parsnip'
+        const crop = CROPS[cropId]
+
+        if (!this.inventory.hasItem(crop.seedItemId)) {
+            this.showMessage(
+                'You have no Parsnip Seeds!'
+            )
+            return
+        }
+
+        const planted =
+            this.farming.plant(
+                x,
+                y,
+                cropId
+            )
+
+        if (!planted) {
+            this.showMessage(
+                'Cannot plant here.'
+            )
+            return
+        }
+
+        this.inventory.removeItem(crop.seedItemId, 1)
+
+        this.showMessage(
+            'You planted a Parsnip Seed!'
+        )
+    }
+
+    private harvestCrop(x: number, y: number) {
+        const itemId = this.farming.harvest(x, y)
+
+        if (!itemId) {
+            this.showMessage(
+                'Nothing to harvest here.'
+            )
+            return
+        }
+
+        this.inventory.addItem(itemId, 1)
+        this.showMessage(`You harvested ${itemId}!`)
+    }
+
+    private renderFarm() {
+        const tileSize = 32
+        this.farmingGraphics.clear()
+        const tiles = this.farming.getAllTiles()
+
+        for (const tile of tiles) {
+            const pixelX = tile.x * tileSize
+            const pixelY = tile.y * tileSize
+
+            // Tilled soil
+            this.farmingGraphics.fillStyle(
+                tile.watered
+                    ? 0x654321
+                    : 0x9b7653
+            )
+
+            this.farmingGraphics.fillRect(
+                pixelX,
+                pixelY,
+                tileSize,
+                tileSize
+            )
+
+            // No crop
+            if (!tile.cropId) {
+                continue
+            }
+
+            const crop = CROPS[tile.cropId]
+
+            if (!crop) {
+                continue
+            }
+
+            const progress = tile.growth / crop.growthDays
+            let cropColor = 0x8bc34a
+            let cropSize = 8
+
+            if (progress >= 1) {
+                cropColor = 0xffd54f
+                cropSize = 24
+            } else if (progress >= 0.5) {
+                cropColor = 0x4caf50
+                cropSize = 16
+            }
+
+            const centerX = pixelX + tileSize / 2
+            const centerY = pixelY + tileSize / 2
+
+            this.farmingGraphics.fillStyle(
+                cropColor
+            )
+
+            this.farmingGraphics.fillCircle(
+                centerX,
+                centerY,
+                cropSize / 2
+            )
+        }
+    }
+
+    private advanceDay() {
+        this.day++
+        this.farming.nextDay()
+        this.renderFarm()
+        this.showMessage(
+            `Day ${this.day}`
+        )
+        console.log(
+            'Farm state:',
+            this.farming.getAllTiles()
+        )
+    }
+
+    private canFarm(x: number, y: number): boolean {
+        // Outside map
+        if (
+            x < 0 ||
+            y < 0 ||
+            x >= this.map.width ||
+            y >= this.map.height
+        ) {
+            return false
+        }
+
+        // Collision tile
+        if (
+            this.collisionLayer?.hasTileAt(
+                x,
+                y
+            )
+        ) {
+            return false
+        }
+
+        // Must have ground
+        const ground =
+            this.map.getLayer('Ground')
+
+        if (!ground) {
+            return false
+        }
+
+        const tile =
+            ground.tilemapLayer.getTileAt(
+                x,
+                y
+            )
+
+        if (!tile) {
+            return false
+        }
+
+        return true
     }
 }
