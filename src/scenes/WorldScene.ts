@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { InventorySystem } from '../systems/InventorySystem'
 
 export class WorldScene extends Phaser.Scene {
 
@@ -13,10 +14,18 @@ export class WorldScene extends Phaser.Scene {
         D: Phaser.Input.Keyboard.Key
     }
 
-    private interactables!: Phaser.Physics.Arcade.StaticGroup
+    // private interactables!: Phaser.Physics.Arcade.StaticGroup
     private interactionKey!: Phaser.Input.Keyboard.Key
     private interactionText!: Phaser.GameObjects.Text
     private interactionTimer?: Phaser.Time.TimerEvent
+
+    private inventory = new InventorySystem()
+    private openedChests = new Set<string>()
+    private interactables!: Phaser.Physics.Arcade.StaticGroup
+
+    private inventoryKey!: Phaser.Input.Keyboard.Key
+    private inventoryText!: Phaser.GameObjects.Text
+    private inventoryVisible = false
 
     constructor() {
         super('WorldScene')
@@ -65,17 +74,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     create() {
-
-        console.log('WorldScene create() started')
-
         const map = this.make.tilemap({
             key: 'farm'
         })
-
-        console.log('MAP:', map)
-        console.log('MAP SIZE:', map.width, map.height)
-        console.log('TILE SIZE:', map.tileWidth, map.tileHeight)
-        console.log('TILESETS:', map.tilesets)
 
         const terrainTileset  = map.addTilesetImage(
             'terrain',
@@ -164,7 +165,7 @@ export class WorldScene extends Phaser.Scene {
         
         this.createPlayerAnimations()
         this.createInteractionTextures()
-        this.createInteractables()
+        this.createInteractables(map)
         this.createInteractionUI()
 
         // Keyboard
@@ -223,6 +224,11 @@ export class WorldScene extends Phaser.Scene {
 
             collisionLayer.setVisible(false)
         }
+
+        this.inventoryKey = this.input.keyboard!.addKey(
+                Phaser.Input.Keyboard.KeyCodes.I
+            )
+        this.createInventoryUI()
     }
 
     private facing: 'down' | 'left' | 'right' | 'up' = 'down'
@@ -338,8 +344,14 @@ export class WorldScene extends Phaser.Scene {
             }
         }
 
+        // toggle sign
         if (Phaser.Input.Keyboard.JustDown(this.interactionKey)) {
             this.interact()
+        }
+
+        // toggle inventory
+        if (Phaser.Input.Keyboard.JustDown(this.inventoryKey)) {
+            this.toggleInventory()
         }
     }
     
@@ -431,47 +443,82 @@ export class WorldScene extends Phaser.Scene {
         chest.destroy()
     }
 
-    private createInteractables() {
-        this.interactables =
-            this.physics.add.staticGroup()
+    private createInteractables(map: Phaser.Tilemaps.Tilemap) {
+        this.interactables = this.physics.add.staticGroup()
+        const layer = map.getObjectLayer('Interactables')
 
-        // Wooden sign
-        const sign = this.interactables.create(
-            480,
-            256,
-            'sign'
-        ) as Phaser.Physics.Arcade.Sprite
+        if (!layer) {
 
-        sign.setData(
-            'type',
-            'sign'
-        )
+            console.warn(
+                'Interactables layer not found'
+            )
 
-        sign.setData(
-            'message',
-            'Welcome to your new farm!'
-        )
+            return
+        }
 
+        for (const object of layer.objects) {
 
-        // Treasure chest
-        const chest = this.interactables.create(
-            576,
-            256,
-            'chest'
-        ) as Phaser.Physics.Arcade.Sprite
+            const type =
+                object.type
 
-        chest.setData(
-            'type',
-            'chest'
-        )
+            const name =
+                object.name
 
-        chest.setData(
-            'message',
-            'You found 100 gold!'
-        )
+            if (
+                type !== 'sign' &&
+                type !== 'chest'
+            ) {
+                continue
+            }
 
+            const width =
+                object.width ?? 32
 
-        // Prevent walking through objects
+            const height =
+                object.height ?? 32
+
+            const x =
+                (object.x ?? 0) + width / 2
+
+            const y =
+                (object.y ?? 0) + height / 2
+
+            const sprite =
+                this.interactables.create(
+                    x,
+                    y,
+                    type
+                ) as Phaser.Physics.Arcade.Sprite
+
+            sprite.setData(
+                'id',
+                name
+            )
+
+            sprite.setData(
+                'type',
+                type
+            )
+
+            // Read custom Tiled properties
+            for (
+                const property of
+                object.properties ?? []
+            ) {
+
+                sprite.setData(
+                    property.name,
+                    property.value
+                )
+            }
+
+            console.log(
+                'Created interactable:',
+                name,
+                type
+            )
+        }
+
         this.physics.add.collider(
             this.player,
             this.interactables
@@ -508,18 +555,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     private interact() {
-
-        const point =
-            this.getInteractionPoint()
-
+        const point = this.getInteractionPoint()
         const interactionRadius = 22
-
-        const objects =
-            this.interactables.getChildren()
-
-        let nearest:
-            Phaser.GameObjects.GameObject | null = null
-
+        const objects = this.interactables.getChildren()
+        let nearest: Phaser.GameObjects.GameObject | null = null
         let nearestDistance = Infinity
 
         for (const object of objects) {
@@ -556,24 +595,67 @@ export class WorldScene extends Phaser.Scene {
     }
     
     private handleInteraction(object: Phaser.Physics.Arcade.Sprite) {
-        const type =
-            object.getData('type')
-
-        const message =
-            object.getData('message')
+        const type = object.getData('type')
+        const message = object.getData('message')
 
         switch (type) {
             case 'sign':
                 this.showMessage(
-                    message
+                    message ?? 'An old wooden sign.'
                 )
                 break
             case 'chest':
-                this.showMessage(
-                    message
-                )
+                this.openChest(object)
                 break
         }
+    }
+
+    private openChest(chest: Phaser.Physics.Arcade.Sprite) {
+        const chestId = chest.getData('id')
+        const itemId = chest.getData('item_id')
+        const quantity = Number(chest.getData('quantity') ?? 1)
+        const message = chest.getData('message')
+
+        // Already opened?
+        if (this.openedChests.has(chestId)) {
+            this.showMessage(
+                'This chest is empty.'
+            )
+            return
+        }
+
+        // Validate item data
+        if (!itemId ||!Number.isInteger(quantity) ||quantity <= 0
+        ) {
+
+            this.showMessage(
+                'This chest is empty.'
+            )
+
+            return
+        }
+
+        // Give item
+        this.inventory.addItem(
+            itemId,
+            quantity
+        )
+
+        // Mark chest as opened
+        this.openedChests.add(
+            chestId
+        )
+
+        // Show result
+        this.showMessage(
+            message ??
+            `You received ${quantity} ${itemId}!`
+        )
+
+        console.log(
+            'Current inventory:',
+            this.inventory.getItems()
+        )
     }
 
     private createInteractionUI() {
@@ -631,4 +713,57 @@ export class WorldScene extends Phaser.Scene {
             )
     }
 
+    private createInventoryUI() {
+        const { width, height } = this.scale
+
+        this.inventoryText =
+            this.add.text(
+                width / 2,
+                height / 2,
+                '',
+                {
+                    fontFamily: 'Arial',
+                    fontSize: '20px',
+                    color: '#ffffff',
+                    backgroundColor: '#222222',
+                    padding: {
+                        x: 30,
+                        y: 25
+                    },
+                    align: 'left'
+                }
+            )
+
+        this.inventoryText.setOrigin(0.5)
+        this.inventoryText.setScrollFactor(0)
+        this.inventoryText.setDepth(2000)
+        this.inventoryText.setVisible(false)
+    }
+
+    private toggleInventory() {
+        this.inventoryVisible = !this.inventoryVisible
+
+        if (!this.inventoryVisible) {
+            this.inventoryText
+                .setVisible(false)
+            return
+        }
+
+        const items = this.inventory.getItems()
+        let content = 'INVENTORY\n\n'
+
+        if (items.length === 0) {
+            content += 'Empty'
+        } else {
+            for (const item of items) {
+                content +=
+                    `${item.itemId} x${item.quantity}\n`
+            }
+        }
+
+        content += '\nPress I to close'
+
+        this.inventoryText.setText(content)
+        this.inventoryText.setVisible(true)
+    }
 }
