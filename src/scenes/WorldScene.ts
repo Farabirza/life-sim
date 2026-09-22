@@ -5,6 +5,7 @@ import {
     CROPS,
     type FarmTile
 } from '../systems/FarmingSystem'
+import { TimeSystem } from '../systems/TimeSystem'
 
 export class WorldScene extends Phaser.Scene {
 
@@ -18,6 +19,8 @@ export class WorldScene extends Phaser.Scene {
         S: Phaser.Input.Keyboard.Key
         D: Phaser.Input.Keyboard.Key
     }
+
+    private facing: 'down' | 'left' | 'right' | 'up' = 'down'
 
     // private interactables!: Phaser.Physics.Arcade.StaticGroup
     private interactionKey!: Phaser.Input.Keyboard.Key
@@ -52,6 +55,9 @@ export class WorldScene extends Phaser.Scene {
 
     private map!: Phaser.Tilemaps.Tilemap
     private collisionLayer?: Phaser.Tilemaps.TilemapLayer
+
+    private gameTime = new TimeSystem()
+    private clockText!: Phaser.GameObjects.Text
 
     constructor() {
         super('WorldScene')
@@ -286,11 +292,13 @@ export class WorldScene extends Phaser.Scene {
 
         this.farmingGraphics = this.add.graphics()
         this.farmingGraphics.setDepth(2)
+
+        this.createClockUI()
     }
 
-    private facing: 'down' | 'left' | 'right' | 'up' = 'down'
-
-    update() {
+    update(_time: number, delta: number) {
+        this.gameTime.update(delta)
+        this.updateClockUI()
 
         const speed = 180
 
@@ -1120,5 +1128,38 @@ export class WorldScene extends Phaser.Scene {
         }
 
         return true
+    }
+
+    private createClockUI(): void {
+        const { width } = this.scale
+        this.clockText = this.add.text(width - 20, 20, '',
+            {
+                fontFamily: 'Arial',
+                fontSize: '18px',
+
+                color: '#ffffff',
+
+                backgroundColor: '#3b3025',
+
+                padding: {
+                    x: 16,
+                    y: 12
+                },
+
+                align: 'right'
+            }
+        )
+        this.clockText.setOrigin(1, 0)
+        this.clockText.setScrollFactor(0)
+        this.clockText.setDepth(3000)
+        this.updateClockUI()
+    }
+
+    private updateClockUI(): void {
+        const day = this.gameTime.getDay()
+        const time = this.gameTime.getFormattedTime()
+        this.clockText.setText(
+            `Day ${day}\n${time}`
+        )
     }
 }
